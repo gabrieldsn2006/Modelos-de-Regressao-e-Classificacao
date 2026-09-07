@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from cirillo_kitlearn import PolynomialRegression
 
-data = np.loadtxt("Solubilidade.csv",delimiter=',')
+data = np.loadtxt("visto-em-sala/dados/Solubilidade.csv",delimiter=',')
 N, p = data.shape
 X = data[:,:-1]
 Y = data[:,-1:]
