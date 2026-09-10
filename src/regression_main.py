@@ -68,7 +68,7 @@ def print_metrics(metrics, model_name):
     print(f"[{model_name}] R2 - Media: {np.mean(r2_values):.4f}, Desvio-Padrao: {np.std(r2_values):.4f}, Maior: {np.max(r2_values):.4f}, Menor: {np.min(r2_values):.4f}")
 
 # polynomial regression
-q = 2
+q = 5
 pr_metrics = []
 for i in range(500):
     idx = np.random.permutation(N)

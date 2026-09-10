@@ -1,0 +1,431 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage[brazil]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage{url}
+
+\begin{document}
+
+\title{Trabalho Computacional Modelos de Regressão e Classificação\\
+{\footnotesize T296 - Inteligência Artificial Computacional}}
+
+\author{
+\IEEEauthorblockN{Gabriel de Sousa Nobre}
+\IEEEauthorblockA{
+\textit{Graduação em Ciência da Computação} \\
+\textit{Universidade de Fortaleza (UNIFOR)} \\
+Fortaleza, Ceará, Brasil \\
+gabrielnobre.dev@gmail.com
+}
+\and
+\IEEEauthorblockN{Victor Lins Gurgel do Amaral}
+\IEEEauthorblockA{
+\textit{Graduação em Ciência da Computação} \\
+\textit{Universidade de Fortaleza (UNIFOR)} \\
+Fortaleza, Ceará, Brasil \\
+vlinsgurgel@gmail.com
+}
+\and
+\IEEEauthorblockN{Lorenzo Barros Calheiros Pinheiro}
+\IEEEauthorblockA{
+\textit{Graduação em Ciência da Computação} \\
+\textit{Universidade de Fortaleza (UNIFOR)} \\
+Fortaleza, Ceará, Brasil \\
+barroslorenzopro@gmail.com
+}}
+
+\maketitle
+
+\begin{abstract}
+Este trabalho apresenta a implementação e a avaliação de modelos de regressão
+aplicados à previsão do Produto Interno Bruto (PIB) da China em função do ano de
+observação. Foram implementados, sem o uso de bibliotecas de aprendizado de
+máquina, os modelos de Mínimos Quadrados Ordinários (MQO) tradicional, MQO
+regularizado por Tikhonov (Ridge) com quatro valores de hiperparâmetro, e
+regressão polinomial via MQO. A ordem do polinômio foi definida por uma
+avaliação inicial baseada no coeficiente de determinação. Todos os modelos foram
+validados por Random Subsampling Validation com 500 rodadas e partição 80/20,
+registrando-se o Erro Quadrático Médio (MSE) e o coeficiente de determinação
+(R2) em cada rodada. Os resultados mostram que a relação entre as variáveis é
+fortemente não linear, o que faz com que os modelos lineares apresentem
+desempenho insatisfatório (R2 médio negativo), enquanto o modelo polinomial de
+ordem cinco alcança R2 médio de 0,9862 e MSE médio de 0,0078. A regularização
+não trouxe ganho relevante, o que é coerente com um problema de apenas uma
+variável regressora e portanto sem multicolinearidade a ser corrigida.
+\end{abstract}
+
+\begin{IEEEkeywords}
+regressão linear, mínimos quadrados ordinários, regularização de Tikhonov,
+regressão polinomial, validação por reamostragem
+\end{IEEEkeywords}
+
+\section{Introdução}
+
+Modelos preditivos supervisionados aprendem a partir de pares formados por um
+vetor de características (variáveis regressoras) e uma variável dependente
+observada, ajustando seus parâmetros pela minimização de uma função custo. Quando
+a variável dependente é quantitativa e contínua, a tarefa é denominada
+\textit{regressão}.
+
+Este relatório trata da primeira etapa do trabalho computacional, dedicada à
+tarefa de regressão. O conjunto de dados utilizado, \texttt{china\_gdp.csv},
+contém $N = 55$ observações anuais do PIB da China, em dólares americanos, entre
+1960 e 2014. A variável independente é o ano de análise ($p = 1$) e a variável
+dependente é o PIB.
+
+O objetivo é comparar três famílias de modelos --- MQO tradicional, MQO
+regularizado (Tikhonov) e regressão polinomial via MQO --- quanto à sua
+capacidade de generalização, estimada por um procedimento de validação por
+reamostragem aleatória. Todos os modelos foram implementados manualmente, em
+Python, utilizando apenas \texttt{NumPy} para álgebra linear e
+\texttt{Matplotlib} para visualização, conforme exigido no enunciado.
+
+\section{Metodologia}
+
+\subsection{Organização dos dados}
+
+Os dados foram carregados diretamente do arquivo CSV e organizados em uma matriz
+de regressores $\mathbf{X} \in \mathbb{R}^{N \times p}$, com $N = 55$ e $p = 1$,
+e em um vetor de variável dependente $\mathbf{y} \in \mathbb{R}^{N \times 1}$.
+
+\subsection{Visualização inicial}
+
+A primeira etapa consistiu na inspeção do gráfico de espalhamento dos dados,
+apresentado na Fig.~\ref{fig:scatter}. Observa-se que o PIB permanece
+praticamente estagnado, em escala absoluta, entre 1960 e o final da década de
+1980, e passa a crescer de forma acentuada a partir dos anos 2000. O padrão é
+claramente monotônico crescente, porém com curvatura pronunciada, sugerindo um
+comportamento de natureza exponencial ou polinomial de ordem elevada.
+
+Essa observação permite antecipar uma característica essencial do modelo
+adequado: uma reta não é capaz de descrever a relação, pois um modelo linear nos
+regressores subestimaria sistematicamente os valores nos extremos da série e os
+superestimaria na região central. Um modelo capaz de capturar esse padrão precisa
+admitir termos de ordem superior na variável regressora.
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=\columnwidth]{scatter.png}}
+\caption{Gráfico de espalhamento dos dados: PIB da China em função do ano.}
+\label{fig:scatter}
+\end{figure}
+
+\subsection{Pré-processamento}
+
+As escalas das duas variáveis são muito distintas: o ano varia na casa das
+unidades de milhar, enquanto o PIB atinge a ordem de $10^{13}$. Ao elevar o
+regressor a potências de até ordem cinco, essa diferença de escala produz
+matrizes fortemente mal condicionadas, comprometendo a estabilidade numérica da
+inversão exigida pela solução de mínimos quadrados.
+
+Por esse motivo, ambas as variáveis foram padronizadas pelo escore-z,
+\begin{equation}
+z = \frac{v - \mu_v}{\sigma_v},
+\label{eq:zscore}
+\end{equation}
+onde $\mu_v$ e $\sigma_v$ são, respectivamente, a média e o desvio-padrão
+amostrais da variável $v$. Todas as métricas reportadas neste relatório
+referem-se, portanto, ao espaço padronizado, o que torna os valores de MSE
+adimensionais e diretamente comparáveis entre modelos.
+
+\subsection{Modelos implementados}
+
+\subsubsection{MQO tradicional}
+
+O modelo linear assume $\hat{\mathbf{y}} = \mathbf{X}\boldsymbol{\beta}$, com a
+matriz de regressores aumentada por uma coluna de uns para a estimação do
+intercepto. Minimizando a soma dos quadrados dos resíduos, obtém-se a solução
+fechada
+\begin{equation}
+\hat{\boldsymbol{\beta}} = (\mathbf{X}^{\top}\mathbf{X})^{-1}\mathbf{X}^{\top}\mathbf{y}.
+\label{eq:ols}
+\end{equation}
+
+\subsubsection{MQO regularizado (Tikhonov)}
+
+A regularização de Tikhonov acrescenta à função custo um termo de penalização
+proporcional à norma euclidiana ao quadrado do vetor de parâmetros, controlado
+pelo hiperparâmetro $\lambda$. A solução passa a ser
+\begin{equation}
+\hat{\boldsymbol{\beta}} = (\mathbf{X}^{\top}\mathbf{X} + \lambda \mathbf{I})^{-1}\mathbf{X}^{\top}\mathbf{y}.
+\label{eq:ridge}
+\end{equation}
+O termo $\lambda \mathbf{I}$ melhora o condicionamento da matriz a ser invertida
+e reduz a variância das estimativas, ao custo da introdução de viés. Foram
+testados os valores $\lambda = \{0;\ 0{,}25;\ 0{,}5;\ 0{,}75;\ 1\}$. O caso
+$\lambda = 0$ recupera exatamente \eqref{eq:ols} e é, portanto, reportado como o
+MQO tradicional, totalizando cinco modelos lineares e seis estimativas distintas
+do vetor $\boldsymbol{\beta}$ ao se contabilizar o modelo polinomial.
+
+\subsubsection{Regressão polinomial via MQO}
+
+O modelo polinomial mantém a estrutura linear nos parâmetros, mas expande a
+variável regressora em uma base de potências de ordem até $q$:
+\begin{equation}
+\hat{y} = \beta_0 + \beta_1 x + \beta_2 x^2 + \cdots + \beta_q x^q.
+\label{eq:poly}
+\end{equation}
+A matriz de projeto resultante é a matriz de Vandermonde dos regressores, e a
+estimativa dos parâmetros é obtida pela pseudoinversa de Moore-Penrose, mais
+estável numericamente que a inversão direta quando as colunas de potências são
+altamente correlacionadas entre si.
+
+\subsection{Definição do hiperparâmetro \textit{q}}
+
+A ordem do polinômio foi definida por uma avaliação inicial com estratégia de
+poda: para cada valor de $q$ de 1 a 10, o modelo foi ajustado e avaliado sob o
+mesmo protocolo de validação descrito adiante, comparando-se o $R^2$ médio de
+teste. Os valores obtidos estão na Tabela~\ref{tab:q}.
+
+\begin{table}[htbp]
+\caption{Seleção da ordem $q$ do polinômio}
+\begin{center}
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{$q$} & \textbf{$R^2$ médio} & \textbf{MSE médio} \\
+\hline
+1  & $-0{,}5926$ & 0,5551 \\
+\hline
+2  & 0,2190 & 0,1920 \\
+\hline
+3  & 0,8099 & 0,0462 \\
+\hline
+4  & 0,9571 & 0,0092 \\
+\hline
+\textbf{5}  & \textbf{0,9853} & \textbf{0,0081} \\
+\hline
+6  & 0,9821 & 0,0114 \\
+\hline
+7  & 0,9764 & 0,0088 \\
+\hline
+8  & 0,9845 & 0,0040 \\
+\hline
+9  & 0,9953 & 0,0018 \\
+\hline
+10 & 0,8974 & 0,0028 \\
+\hline
+\end{tabular}
+\label{tab:q}
+\end{center}
+\end{table}
+
+O ganho é expressivo até $q = 5$, ponto a partir do qual a curva de $R^2$
+satura: os valores de $q$ entre 6 e 9 oscilam em torno do mesmo patamar, sem
+melhora consistente, e $q = 10$ apresenta degradação, indicativa de
+sobreajuste e de instabilidade numérica da base de potências. Adotou-se,
+portanto, $q = 5$, por ser o menor valor que atinge o patamar de desempenho ---
+critério de parcimônia coerente com a estratégia de poda.
+
+\subsection{Validação e métricas}
+
+Para estimar a capacidade de generalização dos modelos foi utilizada a
+\textit{Random Subsampling Validation} com $R = 500$ rodadas. Em cada rodada, os
+índices das observações são permutados aleatoriamente e 80\% dos dados (44
+amostras) são destinados ao treinamento e 20\% (11 amostras) ao teste. O modelo é
+ajustado apenas com a partição de treino e avaliado na partição de teste.
+
+Foram registradas duas métricas por rodada, formando duas listas de 500 valores
+para cada modelo. O erro quadrático médio,
+\begin{equation}
+\mathrm{MSE} = \frac{1}{n}\sum_{i=1}^{n}(y_i - \hat{y}_i)^2,
+\label{eq:mse}
+\end{equation}
+e o coeficiente de determinação,
+\begin{equation}
+R^2 = 1 - \frac{\mathrm{SSE}}{\mathrm{SST}} = 1 - \frac{\sum_{i=1}^{n}(y_i - \hat{y}_i)^2}{\sum_{i=1}^{n}(y_i - \bar{y})^2},
+\label{eq:r2}
+\end{equation}
+onde $\bar{y}$ é a média da variável dependente na partição de teste. Ao final
+das 500 rodadas foram calculadas, para cada modelo e cada métrica, a média
+aritmética, o desvio-padrão, o maior e o menor valor observados.
+
+\section{Resultados}
+
+As Tabelas~\ref{tab:r2} e \ref{tab:mse} apresentam as estatísticas das 500
+rodadas de validação para o $R^2$ e para o MSE, respectivamente.
+
+\begin{table}[htbp]
+\caption{Estatísticas do $R^2$ ao longo das 500 rodadas}
+\begin{center}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+\textbf{Modelos} & \textbf{Média} & \textbf{Desvio-Padrão} & \textbf{Maior Valor} & \textbf{Menor Valor} \\
+\hline
+Polinomial & 0,9862 & 0,0204 & 0,9997 & 0,8135 \\
+\hline
+MQO tradicional & $-0{,}4159$ & 2,5811 & 0,7462 & $-20{,}2422$ \\
+\hline
+MQO reg. (0,25) & $-0{,}8423$ & 5,2781 & 0,7185 & $-84{,}2001$ \\
+\hline
+MQO reg. (0,50) & $-1{,}1172$ & 6,5316 & 0,7704 & $-88{,}6088$ \\
+\hline
+MQO reg. (0,75) & $-1{,}2322$ & 9,0272 & 0,7883 & $-124{,}9546$ \\
+\hline
+MQO reg. (1,00) & $-0{,}6804$ & 5,1989 & 0,7520 & $-68{,}8973$ \\
+\hline
+\end{tabular}
+\label{tab:r2}
+\end{center}
+\end{table}
+
+\begin{table}[htbp]
+\caption{Estatísticas do MSE ao longo das 500 rodadas}
+\begin{center}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+\textbf{Modelos} & \textbf{Média} & \textbf{Desvio-Padrão} & \textbf{Maior Valor} & \textbf{Menor Valor} \\
+\hline
+Polinomial & 0,0078 & 0,0074 & 0,0452 & 0,0003 \\
+\hline
+MQO tradicional & 0,5275 & 0,3092 & 1,9655 & 0,1517 \\
+\hline
+MQO reg. (0,25) & 0,5524 & 0,3121 & 1,9318 & 0,1481 \\
+\hline
+MQO reg. (0,50) & 0,5291 & 0,3278 & 2,3324 & 0,1136 \\
+\hline
+MQO reg. (0,75) & 0,5178 & 0,3367 & 2,1117 & 0,1244 \\
+\hline
+MQO reg. (1,00) & 0,5188 & 0,3205 & 2,3573 & 0,1012 \\
+\hline
+\end{tabular}
+\label{tab:mse}
+\end{center}
+\end{table}
+
+As Figs.~\ref{fig:poly} e \ref{fig:linear} ilustram, no espaço padronizado, o
+ajuste obtido pelo modelo polinomial e pelo modelo linear sobre o conjunto
+completo de dados.
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=\columnwidth]{fit_polinomial.png}}
+\caption{Ajuste da regressão polinomial de ordem $q = 5$.}
+\label{fig:poly}
+\end{figure}
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=\columnwidth]{fit_mqo.png}}
+\caption{Ajuste do MQO tradicional.}
+\label{fig:linear}
+\end{figure}
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=\columnwidth]{fit_ridge_1.png}}
+\caption{Ajuste do MQO regularizado com $\lambda = 1$.}
+\label{fig:ridge}
+\end{figure}
+
+\section{Discussão}
+
+\subsection{Desempenho do modelo polinomial}
+
+O modelo polinomial de ordem cinco foi, com larga margem, o de melhor
+desempenho. Seu MSE médio (0,0078) é aproximadamente 68 vezes menor que o do MQO
+tradicional (0,5275), e seu $R^2$ médio de 0,9862 indica que o modelo explica
+cerca de 98,6\% da variância do PIB na partição de teste. Igualmente relevante é
+a sua estabilidade: o desvio-padrão do $R^2$ é de apenas 0,0204 e o pior
+resultado entre as 500 rodadas ainda foi de 0,8135. Ou seja, o modelo não apenas
+acerta em média, como acerta de forma consistente, independentemente de qual
+sorteio de partição foi realizado.
+
+Esse resultado confirma a hipótese levantada na inspeção do gráfico de
+espalhamento: a relação entre ano e PIB é fortemente não linear, e a expansão da
+variável regressora em uma base polinomial é suficiente para capturá-la.
+
+\subsection{Desempenho dos modelos lineares}
+
+Todos os modelos lineares apresentaram $R^2$ médio negativo. Um $R^2$ negativo
+significa que o modelo é pior do que simplesmente prever a média da variável
+dependente, o que evidencia a inadequação estrutural de uma reta para descrever a
+curva observada. Na Fig.~\ref{fig:linear} é possível verificar o padrão de erro
+característico: resíduos sistematicamente positivos nos extremos da série e
+negativos na região intermediária, um viés que nenhum ajuste de parâmetros pode
+eliminar dentro da hipótese linear.
+
+Dois pontos merecem atenção na leitura dessas estatísticas. Primeiro, a
+discrepância aparente entre as duas métricas: enquanto o MSE dos modelos
+lineares é elevado, mas estável (média em torno de 0,52, com desvio-padrão de
+aproximadamente 0,32), o $R^2$ apresenta média negativa e desvio-padrão de
+várias unidades, com valores mínimos que chegam a $-124{,}95$. A explicação está
+no denominador de \eqref{eq:r2}: com apenas 11 amostras de teste, existem
+sorteios em que essas amostras se concentram na região inicial da série, onde o
+PIB varia pouco. Nesses casos, o SST do conjunto de teste é muito pequeno, e
+qualquer erro do modelo é dividido por um número próximo de zero, produzindo
+valores de $R^2$ fortemente negativos. Trata-se de um artefato da métrica sob
+partições pequenas, e não de uma falha adicional do modelo --- o MSE, que não
+sofre desse efeito, mostra que o erro absoluto permanece estável entre as
+rodadas.
+
+Segundo, é justamente esse efeito que explica a ordenação aparentemente errática
+dos modelos regularizados nas tabelas: a média do $R^2$ é dominada por poucas
+rodadas com valores extremos, de modo que as diferenças observadas entre os
+valores de $\lambda$ refletem sobretudo o sorteio das partições, e não uma
+diferença real de qualidade entre os modelos.
+
+\subsection{Efeito da regularização}
+
+A regularização de Tikhonov não produziu ganho relevante em relação ao MQO
+tradicional. Pelo MSE médio, os cinco modelos lineares situam-se na faixa de
+0,518 a 0,552, uma variação inferior a 7\% e muito menor que o desvio-padrão de
+cada estimativa, o que a torna estatisticamente indistinguível de ruído.
+
+Esse comportamento é esperado. A regularização atua sobre o problema da variância
+elevada das estimativas, típico de cenários com muitos regressores,
+multicolinearidade ou matriz $\mathbf{X}^{\top}\mathbf{X}$ mal condicionada.
+Nenhuma dessas condições está presente aqui: o problema possui uma única
+variável regressora, previamente padronizada, e a matriz a ser invertida é de
+dimensão $2 \times 2$ e bem condicionada. Além disso, os valores de $\lambda$
+testados são pequenos frente aos elementos de $\mathbf{X}^{\top}\mathbf{X}$, cuja
+diagonal é da ordem do número de amostras de treino (44), de forma que a
+penalização praticamente não desloca a solução.
+
+Em resumo, a limitação dos modelos lineares neste problema é de \textit{viés},
+não de \textit{variância}, e a regularização é uma ferramenta destinada a atacar
+a variância. Reduzir ainda mais a magnitude dos coeficientes de um modelo que já
+é estruturalmente incapaz de representar a curvatura dos dados apenas o afasta um
+pouco mais da solução de mínimos quadrados, sem qualquer benefício de
+generalização.
+
+\subsection{Considerações sobre a metodologia}
+
+Duas observações sobre o protocolo adotado. A padronização descrita em
+\eqref{eq:zscore} foi calculada sobre o conjunto completo, antes do
+particionamento, o que introduz um vazamento de informação de baixa intensidade
+--- restrito a duas estatísticas agregadas, média e desvio-padrão. Em um cenário
+rigoroso, esses parâmetros deveriam ser estimados apenas na partição de treino e
+aplicados à de teste.
+
+Além disso, o conjunto de dados é pequeno ($N = 55$) e as observações constituem
+uma série temporal. O particionamento aleatório utilizado avalia, na prática, a
+capacidade de \textit{interpolação} do modelo entre anos observados, e não sua
+capacidade de \textit{extrapolação} para anos futuros. Um modelo polinomial de
+ordem cinco, embora excelente na interpolação, tende a divergir rapidamente fora
+do intervalo de treinamento, e o $R^2$ de 0,9862 não deve ser interpretado como
+uma garantia de qualidade preditiva para anos posteriores a 2014.
+
+\section{Conclusão}
+
+Foram implementados e avaliados cinco modelos de regressão para a previsão do
+PIB da China em função do ano, sob validação por reamostragem aleatória com 500
+rodadas. O modelo polinomial de ordem $q = 5$ foi o mais adequado, com $R^2$
+médio de 0,9862 e MSE médio de 0,0078, superando os modelos lineares em cerca de
+duas ordens de grandeza no erro quadrático médio. Os modelos lineares, tanto na
+formulação tradicional quanto na regularizada, mostraram-se estruturalmente
+inadequados ao problema, apresentando $R^2$ médio negativo.
+
+A regularização de Tikhonov não produziu melhora significativa, resultado
+coerente com a natureza do problema: com uma única variável regressora e uma
+matriz de covariância bem condicionada, não há excesso de variância a ser
+controlado. O experimento ilustra, assim, um ponto central da modelagem
+preditiva: a escolha adequada da representação das variáveis de entrada --- neste
+caso, a expansão polinomial --- tem impacto muito maior sobre o desempenho do que
+o ajuste fino de mecanismos de regularização.
+
+O código-fonte completo das implementações está disponível em
+\url{https://github.com/gabrieldsn2006/Modelos-de-Regressao-e-Classificacao}.
+
+\end{document}
