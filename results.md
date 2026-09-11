@@ -1,4 +1,4 @@
-$R²$
+## R²
 
 | Modelos | Média | Desvio-Padrão | Maior Valor | Menor Valor |
 | --- | --- | --- | --- | --- |
@@ -9,7 +9,7 @@ $R²$
 | MQO regularizado (0.75) | -1.2322 | 9.0272 | 0.7883 | -124.9546 |
 | MQO regularizado (1.00) | -0.6804 | 5.1989 | 0.7520 | -68.8973 |
 
-$MSE$
+## MSE
 
 | Modelos | Média | Desvio-Padrão | Maior Valor | Menor Valor |
 | --- | --- | --- | --- | --- |
@@ -34,3 +34,13 @@ $MSE$
 [Regressao Ridge (lambda=1)] MSE - Media: 0.5188, Desvio-Padrao: 0.3205, Maior: 2.3573, Menor: 0.1012
 [Regressao Ridge (lambda=1)] R2 - Media: -0.6804, Desvio-Padrao: 5.1989, Maior: 0.7520, Menor: -68.8973
 ```
+
+## Classificação (Validação por Monte Carlo, R = 500)
+
+| Modelos                        | Média  | Desvio-Padrão | Maior Valor | Menor Valor |
+|---------------------------------|--------|----------------|-------------|-------------|
+| MQO tradicional                 | 0.7239 | 0.0064         | 0.7418      | 0.7013      |
+| MQO regularizado (λ = 1,00)     | 0.7239 | 0.0064         | 0.7418      | 0.7013      |
+| MQO polinomial (q = 4)          | 0.9969 | 0.0005         | 0.9983      | 0.9955      |
+
+Os resultados indicam que as classes do problema não são linearmente separáveis no espaço original dos dois sensores: o MQO tradicional e o MQO regularizado, que são modelos lineares, ficam limitados a uma acurácia média de apenas 72,39%, enquanto o MQO polinomial (q = 4) atinge 99,69%, mostrando que fronteiras de decisão curvas são necessárias para separar bem as 5 classes de expressão facial. O MQO regularizado apresentou resultado praticamente idêntico ao MQO tradicional porque, para λ = 1, o termo de penalização é desprezível frente à magnitude de XᵀX (da ordem de 10¹⁰–10¹¹, dado que os sinais dos sensores chegam a ~4000 e há 50.000 amostras); nesse regime, a regularização de Tikhonov não altera de forma perceptível o vetor de parâmetros estimado. Já o desvio-padrão do modelo polinomial (0,0005) é uma ordem de grandeza menor que o dos modelos lineares (0,0064), o que mostra que, além de mais acurado, ele é também mais estável entre as 500 rodadas de validação por Monte Carlo — um indicativo de que o grau q = 4, escolhido pelo critério de poda do item 4, oferece um bom compromisso entre complexidade do modelo e capacidade de generalização, sem sinais de overfitting nesse conjunto de teste.

@@ -116,6 +116,101 @@ class PolynomialOLSClassifier(OLSClassifier):
         return self._transform(X) @ self.W
 
 
+import time
+
+
+def select_polynomial_degree(X, Y, labels, classes, q_values=range(1, 7), test_size=0.2, random_state=None, tol=0.002):
+    """Avalia o classificador MQO polinomial para diferentes valores de q.
+
+    Mede, num único particionamento holdout, a acurácia e o tempo de estimação
+    dos parâmetros (fit) de cada q. Aplica uma estratégia de poda: escolhe o
+    MENOR q cuja acurácia fica a até `tol` da melhor acurácia observada, em vez
+    de pegar sempre o q com maior acurácia bruta — assim não se paga tempo
+    extra de treino por um ganho de acurácia irrelevante.
+
+    Retorna (q_escolhido, tabela), onde tabela é uma lista de dicts
+    {"q", "acuracia", "tempo_segundos"}.
+    """
+    rng = np.random.default_rng(random_state)
+    n_samples = X.shape[0]
+    n_train = round((1 - test_size) * n_samples)
+    idx = rng.permutation(n_samples)
+    train_idx, test_idx = idx[:n_train], idx[n_train:]
+
+    X_train, X_test = X[train_idx], X[test_idx]
+    labels_train, labels_test = labels[train_idx], labels[test_idx]
+    Y_train = Y[train_idx]
+
+    table = []
+    for q in q_values:
+        model = PolynomialOLSClassifier(q=q)
+
+        start = time.perf_counter()
+        model.fit(X_train, Y_train, classes)
+        elapsed = time.perf_counter() - start
+
+        predictions = model.predict(X_test)
+        accuracy = np.mean(predictions == labels_test)
+        table.append({"q": q, "acuracia": accuracy, "tempo_segundos": elapsed})
+
+    best_accuracy = max(row["acuracia"] for row in table)
+    chosen = next(row for row in table if row["acuracia"] >= best_accuracy - tol)
+
+    return chosen["q"], table
+
+
+def print_degree_table(table):
+    print(f"{'q':>3} | {'acurácia':>9} | {'tempo (s)':>10}")
+    for row in table:
+        print(f"{row['q']:>3} | {row['acuracia']:>9.4f} | {row['tempo_segundos']:>10.4f}")
+
+
+def monte_carlo_validation(X, labels, classes, model_builders, R=500, train_frac=0.8, random_state=None):
+    """Valida modelos por amostragem aleatória (Monte Carlo).
+
+    model_builders: dict {nome: função sem args que retorna um modelo novo (ex.: fit()-ável)}.
+    Retorna dict {nome: lista de acurácias, uma por rodada}.
+    """
+    rng = np.random.default_rng(random_state)
+    n_samples = X.shape[0]
+    n_train = round(train_frac * n_samples)
+    num_classes = classes.size
+
+    results = {name: [] for name in model_builders}
+
+    for _ in range(R):
+        idx = rng.permutation(n_samples)
+        train_idx, test_idx = idx[:n_train], idx[n_train:]
+
+        X_train, X_test = X[train_idx], X[test_idx]
+        labels_train, labels_test = labels[train_idx], labels[test_idx]
+
+        Y_train = np.zeros((labels_train.size, num_classes), dtype=float)
+        for row, label in enumerate(labels_train):
+            Y_train[row, label - 1] = 1.0
+
+        for name, build_model in model_builders.items():
+            model = build_model()
+            model.fit(X_train, Y_train, classes)
+            predictions = model.predict(X_test)
+            accuracy = np.mean(predictions == labels_test)
+            results[name].append(accuracy)
+
+    return results
+
+
+def summarize_accuracies(results):
+    """Imprime média, desvio padrão, maior e menor valor da acurácia de cada modelo."""
+    for name, accuracies in results.items():
+        accuracies = np.asarray(accuracies)
+        print(
+            f"{name}: acurácia_média={accuracies.mean():.4f}  "
+            f"desvio_padrao={accuracies.std():.4f}  "
+            f"maior={accuracies.max():.4f}  "
+            f"menor={accuracies.min():.4f}"
+        )
+
+
 def plot_data(X, labels, classes):
     colors = ("tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple")
     plt.figure(figsize=(9, 6))
@@ -153,6 +248,25 @@ if __name__ == "__main__":
         model.fit(X, Y, classes)
         predictions = model.predict(X)
         print(f"{type(model).__name__}: {predictions.shape}")
+
+    #4: seleção do grau q do classificador polinomial (acurácia vs. tempo).
+    best_q, degree_table = select_polynomial_degree(
+        X, Y, labels, classes, q_values=range(1, 7), test_size=0.2, random_state=42
+    )
+    print("\nSeleção do hiperparâmetro q (item 4):")
+    print_degree_table(degree_table)
+    print(f"q escolhido: {best_q}\n")
+
+    #5: validação por Monte Carlo (R=500, 80% treino / 20% teste).
+    model_builders = {
+        "MQO tradicional": lambda: OLSClassifier(),
+        "MQO regularizado (lambda=1.0)": lambda: RegularizedOLSClassifier(lambd=1.0),
+        f"MQO polinomial (q={best_q})": lambda: PolynomialOLSClassifier(q=best_q),
+    }
+    results = monte_carlo_validation(
+        X, labels, classes, model_builders, R=500, train_frac=0.8, random_state=42
+    )
+    summarize_accuracies(results)
 
     plot_data(X, labels, classes)
     plt.show()
