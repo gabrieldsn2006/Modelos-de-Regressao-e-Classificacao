@@ -67,6 +67,37 @@ def print_metrics(metrics, model_name):
     print(f"[{model_name}] MSE - Media: {np.mean(mse_values):.4f}, Desvio-Padrao: {np.std(mse_values):.4f}, Maior: {np.max(mse_values):.4f}, Menor: {np.min(mse_values):.4f}")
     print(f"[{model_name}] R2 - Media: {np.mean(r2_values):.4f}, Desvio-Padrao: {np.std(r2_values):.4f}, Maior: {np.max(r2_values):.4f}, Menor: {np.min(r2_values):.4f}")
 
+# avaliação inicial do hiperparâmetro q (estratégia de poda comparando o R²)
+# as mesmas 500 partições (semente fixa) são usadas para todos os valores de q
+rng_q = np.random.default_rng(42)
+particoes = [rng_q.permutation(N) for _ in range(500)]
+for q_teste in range(1, 11):
+    q_metrics = []
+    for idx in particoes:
+        Xr = np.copy(X)[idx,:]
+        Yr = np.copy(Y)[idx,:]
+
+        X_treino = Xr[:int(.8*N),:]
+        Y_treino = Yr[:int(.8*N),:]
+
+        X_teste = Xr[int(.8*N):,:]
+        Y_teste = Yr[int(.8*N):,:]
+
+        pr = PolynomialRegression(X_treino, Y_treino, q=q_teste)
+        pr.fit()
+
+        Y_pred = pr.predict(X_teste)
+        E = Y_teste - Y_pred
+        SSE = np.sum(E**2)
+        MSE = np.mean(E**2)
+        y_bar = np.mean(Y_teste)
+        SST = np.sum((Y_teste - y_bar)**2)
+        R2 = 1 - SSE/SST
+        q_metrics.append((MSE, R2))
+    mse_q = [m[0] for m in q_metrics]
+    r2_q  = [m[1] for m in q_metrics]
+    print(f"[Selecao de q] q={q_teste}: R2 medio={np.mean(r2_q):.4f}, R2 minimo={np.min(r2_q):.4f}, MSE medio={np.mean(mse_q):.4f}, MSE maximo={np.max(mse_q):.4f}")
+
 # polynomial regression
 q = 5
 pr_metrics = []
